@@ -57,13 +57,17 @@ execute(Connection, StmtName, []) when is_atom(StmtName) ->
 
 execute(Connection, Query, Args) when (is_list(Query) orelse is_binary(Query)) andalso is_list(Args) ->
 	StmtName = "stmt_"++integer_to_list(erlang:phash2(Query)),
-	prepare(Connection, StmtName, Query),
 	Ret =
-	case set_params(Connection, 1, Args, undefined) of
-		OK when is_record(OK, ok_packet) ->
-			ParamNamesBin = list_to_binary(string:join([[$@ | integer_to_list(I)] || I <- lists:seq(1, length(Args))], ", ")),
-			Packet = <<?COM_QUERY, "EXECUTE ", (list_to_binary(StmtName))/binary, " USING ", ParamNamesBin/binary>>,
-			emysql_tcp:send_and_recv_packet(Connection#emysql_connection.socket, Packet, 0);
+	case prepare(Connection, StmtName, Query) of
+		#ok_packet{} ->
+			case set_params(Connection, 1, Args, undefined) of
+				OK when is_record(OK, ok_packet) ->
+					ParamNamesBin = list_to_binary(string:join([[$@ | integer_to_list(I)] || I <- lists:seq(1, length(Args))], ", ")),
+					Packet = <<?COM_QUERY, "EXECUTE ", (list_to_binary(StmtName))/binary, " USING ", ParamNamesBin/binary>>,
+					emysql_tcp:send_and_recv_packet(Connection#emysql_connection.socket, Packet, 0);
+				Error ->
+					Error
+			end;
 		Error ->
 			Error
 	end,
